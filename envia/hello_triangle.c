@@ -13,6 +13,8 @@ struct ESContext
 	GLint height;
 	EGLNativeDisplayType egl_native_display;
 	EGLNativeWindowType  egl_native_window;
+
+	void (*key_func)(ESContext *, unsigned char, int, int);
 };
 
 Display *x_display = NULL;
@@ -81,6 +83,41 @@ EGLBoolean x_win_create(ESContext *es_context, const char *title)
 	return EGL_TRUE;
 }
 
+GLboolean x_user_interrupt(ESContext *es_context)
+{
+	XEvent xev;
+	KeySym key;
+	GLboolean user_interrupt = GL_FALSE;
+	char text;
+
+	while (XPending(x_display)) {
+		XNextEvent(x_display, &xev);
+		if (xev.type == KeyPress) {
+			if (XLookupString(&xev.xkey, &text, 1, &key, 0) == 1) {
+				if (es_context->key_func != NULL) {
+					es_context->key_func(es_context, text, 0, 0);
+				}
+			}
+		}
+		if (xev.type == ClientMessage) {
+			if (xev.xclient.data.l[0] == x_wm_delete_window) {
+				user_interrupt = GL_TRUE;
+			}
+		}
+		if (xev.type == DestroyNotify) {
+			user_interrupt = GL_TRUE;
+		}
+	}
+
+	return user_interrupt;
+}
+
+void x_win_loop(ESContext *es_context)
+{
+	while (x_user_interrupt(es_context) == GL_FALSE)
+		;
+}
+
 GLboolean es_create_window(ESContext *es_context, const char *title, GLint width, GLint height)
 {
 	if (es_context == NULL) {
@@ -115,6 +152,8 @@ int main()
 	if (es_main(&es_context) != GL_TRUE) {
 		return EXIT_FAILURE;
 	}
+
+	x_win_loop(&es_context);
 
 	return EXIT_SUCCESS;
 }
