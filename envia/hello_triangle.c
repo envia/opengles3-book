@@ -1,6 +1,7 @@
 #include <EGL/egl.h>
 #include <GLES3/gl3.h>
 #include <X11/Xlib.h>
+#include <X11/Xutil.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -10,25 +11,72 @@ struct ESContext
 {
 	GLint width;
 	GLint height;
+	EGLNativeDisplayType egl_native_display;
+	EGLNativeWindowType  egl_native_window;
 };
 
 Display *x_display = NULL;
+Atom x_wm_delete_window = None;
 
 EGLBoolean x_win_create(ESContext *es_context, const char *title)
 {
-	Window root;
-	XSetWindowAttributes swa;
-	Window win;
-
-	x_display = XOpenDisplay(NULL);
+	x_display = XOpenDisplay(/* display_name = */ NULL);
 	if (x_display == NULL) {
 		return EGL_FALSE;
 	}
 
-	root = DefaultRootWindow(x_display);
+	Window root = DefaultRootWindow(x_display);
 
-	swa.event_mask = ExposureMask | PointerMotionMask | KeyPressMask;
-	win = XCreateWindow(x_display, root, 0, 0, es_context->width, es_context->height, 0, CopyFromParent, InputOutput, CopyFromParent, CWEventMask, &swa);
+	XSetWindowAttributes attr_create;
+	attr_create.event_mask = ExposureMask | PointerMotionMask | KeyPressMask;
+	Window win = XCreateWindow(
+			/* display = */ x_display,
+			/* parent = */ root,
+			/* x = */ 0,
+			/* y = */ 0,
+			/* width = */ es_context->width,
+			/* height = */ es_context->height,
+			/* border_width = */ 0,
+			/* depth = */ CopyFromParent,
+			/* class = */ InputOutput,
+			/* visual = */ CopyFromParent,
+			/* valuemask = */ CWEventMask,
+			/* attributes = */ &attr_create);
+
+	x_wm_delete_window = XInternAtom(x_display, "WM_DELETE_WINDOW", False);
+	XSetWMProtocols(x_display, win, &x_wm_delete_window, 1);
+
+	XSetWindowAttributes attr_change;
+	attr_change.override_redirect = False;
+	XChangeWindowAttributes(x_display, win, CWOverrideRedirect, &attr_change);
+
+	XWMHints hints;
+	hints.flags = InputHint;
+	hints.flags = True;
+	XSetWMHints(x_display, win, &hints);
+
+	XMapWindow(x_display, win);
+
+	XStoreName(x_display, win, title);
+
+	Atom wm_state = XInternAtom(x_display, "_NET_WM_STATE", False);
+	XEvent xev;
+	memset(&xev, 0, sizeof(xev));
+	xev.type = ClientMessage;
+	xev.xclient.window = win;
+	xev.xclient.message_type = wm_state;
+	xev.xclient.format = 32;
+	xev.xclient.data.l[0] = 1;
+	xev.xclient.data.l[1] = False;
+	XSendEvent(
+			/* display = */ x_display,
+			/* w = */ root,
+			/* propagate = */ False,
+			/* event_mask */ SubstructureNotifyMask,
+			/* event_send */ &xev);
+
+	es_context->egl_native_window = (EGLNativeWindowType)win;
+	es_context->egl_native_display = (EGLNativeDisplayType)x_display;
 
 	return EGL_TRUE;
 }
