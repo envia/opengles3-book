@@ -1,5 +1,7 @@
+// libegl-dev
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
+// libgles-dev
 #include <GLES3/gl3.h>
 #include <X11/Xutil.h>
 #include <sys/time.h>
